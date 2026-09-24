@@ -14,29 +14,72 @@ router.post('/modify', async (req: Request, res: Response) => {
   try {
     const { type, filename, fixedContent, matches, originalFileBase64 } = req.body;
 
-    if (!fixedContent || !originalFileBase64) {
-      res.status(400).json({ success: false, error: 'Fixed content and original file are required' });
+    if (!fixedContent) {
+      res.status(400).json({ success: false, error: 'Fixed content is required' });
       return;
     }
 
     const baseName = (filename || 'document').replace(/\.[^.]+$/, '');
-    const buffer = Buffer.from(originalFileBase64, 'base64');
 
     if (type === 'docx') {
-      const doc = Unpacker.unpack(buffer);
-      replaceTextInDocx(doc, matches || []);
-      const resultBuffer = await Packer.toBuffer(doc);
+      if (originalFileBase64) {
+        try {
+          const buffer = Buffer.from(originalFileBase64, 'base64');
+          const doc = Unpacker.unpack(buffer);
+          replaceTextInDocx(doc, matches || []);
+          const resultBuffer = await Packer.toBuffer(doc);
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          res.setHeader('Content-Disposition', `attachment; filename="${baseName}.docx"`);
+          res.send(Buffer.from(resultBuffer));
+          return;
+        } catch (docxError: any) {
+          console.error('DOCX unpack failed, falling back to clean build:', docxError.message);
+        }
+      }
+      // Fallback: build clean DOCX from fixed content
+      const doc = buildDocxClean(fixedContent);
+      const buffer = await Packer.toBuffer(doc);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       res.setHeader('Content-Disposition', `attachment; filename="${baseName}.docx"`);
-      res.send(Buffer.from(resultBuffer));
+      res.send(Buffer.from(buffer));
       return;
     }
 
     if (type === 'pdf') {
-      const pdfData = await pdfParse(buffer);
-      const originalPdfText = pdfData.text;
-      const fixedPdfText = applyFixesToOriginal(originalPdfText, matches || []);
-      const docDefinition = buildPdfClean(fixedPdfText);
+      if (originalFileBase64) {
+        try {
+          const buffer = Buffer.from(originalFileBase64, 'base64');
+          const pdfData = await pdfParse(buffer);
+          const originalPdfText = pdfData.text;
+          const fixedPdfText = applyFixesToOriginal(originalPdfText, matches || []);
+          const docDefinition = buildPdfClean(fixedPdfText);
+          const fonts = {
+            Roboto: {
+              normal: 'Helvetica',
+              bold: 'Helvetica-Bold',
+              italics: 'Helvetica-Oblique',
+              bolditalics: 'Helvetica-BoldOblique'
+            }
+          };
+          const printer = new (PDFDocument as any)(fonts);
+          const chunks: Buffer[] = [];
+
+          const doc = printer.createPdfKitDocument(docDefinition);
+          doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+          doc.on('end', () => {
+            const result = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${baseName}.pdf"`);
+            res.send(result);
+          });
+          doc.end();
+          return;
+        } catch (pdfError: any) {
+          console.error('PDF parse failed, falling back to clean build:', pdfError.message);
+        }
+      }
+      // Fallback: build clean PDF from fixed content
+      const docDefinition = buildPdfClean(fixedContent);
       const fonts = {
         Roboto: {
           normal: 'Helvetica',
@@ -62,6 +105,7 @@ router.post('/modify', async (req: Request, res: Response) => {
 
     res.status(400).json({ success: false, error: 'Unsupported export type. Use "pdf" or "docx".' });
   } catch (error: any) {
+    console.error('Export error:', error);
     res.status(500).json({ success: false, error: `Export failed: ${error.message}` });
   }
 });

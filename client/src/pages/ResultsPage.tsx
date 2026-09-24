@@ -180,13 +180,11 @@ export default function ResultsPage() {
     setError('');
     try {
       const meta = JSON.parse(sessionStorage.getItem('checkMeta') || '{}');
-      const fileBase64 = meta?.fileBase64;
       const blob = await exportDocumentModify(
         type,
         meta?.filename || 'document',
         fixedText,
-        matches,
-        fileBase64
+        matches
       );
       downloadBlob(blob, `${(meta?.filename || 'document').replace(/\.[^.]+$/, '')}.${type}`);
     } catch (err: any) {
