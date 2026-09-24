@@ -43,6 +43,31 @@ export default function ResultsPage() {
   const similarity = result?.similarity || 0;
   const originalText = result?.originalText || '';
 
+  // Auto-fetch suggestions for all matches so fixes can be applied
+  useEffect(() => {
+    if (!result || !result.matches || result.matches.length === 0) return;
+    const hasSuggestions = result.matches.some(m => m.suggestions && m.suggestions.length > 0);
+    if (hasSuggestions) return;
+    const fetchSuggestions = async () => {
+      setFetchingSuggestions(true);
+      try {
+        const enriched = await checkPlagiarism(originalText, {
+          threshold: meta?.threshold || 15,
+          checkWeb: meta?.checkWeb || false,
+          ngramSize: meta?.ngramSize || 5,
+          citationStyle: meta?.citationStyle || 'APA'
+        });
+        setResult(prev => prev ? { ...prev, matches: enriched.matches } : prev);
+        sessionStorage.setItem('checkResult', JSON.stringify({ ...result, matches: enriched.matches }));
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setFetchingSuggestions(false);
+      }
+    };
+    fetchSuggestions();
+  }, [result]);
+
   // Auto-apply the first suggestion for every match so "changes made" is never stuck at 0
   useEffect(() => {
     if (!result || !result.matches || result.matches.length === 0) return;
