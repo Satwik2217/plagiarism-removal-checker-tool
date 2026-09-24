@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { PlagiarismService } from '../services/plagiarism.service';
+import { LLMService } from '../services/llm.service';
 import { extractTopic, TopicResult } from '../services/topic.service';
 import { gatherSourcesAutomatically, } from '../services/auto-source.service';
 import { queryAll } from '../db/init';
