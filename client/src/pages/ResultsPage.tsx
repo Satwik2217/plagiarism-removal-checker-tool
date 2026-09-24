@@ -6,8 +6,8 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { CheckResult, Match, AppliedFix, CitationStyle, ExportType } from '../types';
-import { buildHighlightedText, applyFixesToText, getRiskColor, getRiskBadge, getRiskLabel, getRiskBg, downloadBlob } from '../utils/helpers';
-import { exportDocumentModify, exportReport, saveCheck, suggestFix, checkPlagiarism } from '../utils/api';
+import { buildHighlightedText, applyFixesToText, getRiskColor, getRiskBadge, getRiskLabel, getRiskBg, downloadBlob, generateFallbackFix } from '../utils/helpers';
+import { exportDocumentModify, exportReport, saveCheck, checkPlagiarism } from '../utils/api';
 import FixEditor from '../components/FixEditor';
 
 export default function ResultsPage() {
@@ -20,7 +20,6 @@ export default function ResultsPage() {
   const [saving, setSaving] = useState(false);
   const [showHighlights, setShowHighlights] = useState(true);
   const [error, setError] = useState('');
-  const [fetchingSuggestions, setFetchingSuggestions] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('checkResult');
@@ -43,37 +42,6 @@ export default function ResultsPage() {
   const similarity = result?.similarity || 0;
   const originalText = result?.originalText || '';
 
-  // Auto-fetch suggestions for all matches so fixes can be applied
-  useEffect(() => {
-    if (!result || !result.matches || result.matches.length === 0) return;
-    const hasSuggestions = result.matches.some(m => m.suggestions && m.suggestions.length > 0);
-    if (hasSuggestions) return;
-    const fetchSuggestions = async () => {
-      setFetchingSuggestions(true);
-      try {
-        const updatedMatches = [...result.matches];
-        for (let i = 0; i < updatedMatches.length; i++) {
-          const match = updatedMatches[i];
-          if (!match.suggestions || match.suggestions.length === 0) {
-            try {
-              const fixResult = await suggestFix(match.text, originalText, meta?.citationStyle || 'APA');
-              updatedMatches[i] = { ...match, suggestions: fixResult.suggestions, citations: fixResult.citations };
-            } catch {
-              // skip if suggestion fails
-            }
-          }
-        }
-        setResult(prev => prev ? { ...prev, matches: updatedMatches } : prev);
-        sessionStorage.setItem('checkResult', JSON.stringify({ ...result, matches: updatedMatches }));
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setFetchingSuggestions(false);
-      }
-    };
-    fetchSuggestions();
-  }, [result]);
-
   // Auto-apply the first suggestion for every match so "changes made" is never stuck at 0
   useEffect(() => {
     if (!result || !result.matches || result.matches.length === 0) return;
@@ -85,6 +53,14 @@ export default function ResultsPage() {
           originalText: match.text,
           fixedText: match.suggestions[0],
           suggestionIndex: 0
+        });
+      } else if (match.text) {
+        // Generate a fallback fix when no LLM suggestions are available
+        autoFixes.push({
+          matchId: match.id,
+          originalText: match.text,
+          fixedText: generateFallbackFix(match.text),
+          suggestionIndex: -1
         });
       }
     }
@@ -189,7 +165,6 @@ export default function ResultsPage() {
 
   const fetchAllSuggestions = async () => {
     if (!matches.length) return;
-    setFetchingSuggestions(true);
     try {
       const enriched = await checkPlagiarism(originalText, {
         threshold: meta?.threshold || 15,
@@ -201,8 +176,6 @@ export default function ResultsPage() {
       sessionStorage.setItem('checkResult', JSON.stringify({ ...result, matches: enriched.matches }));
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setFetchingSuggestions(false);
     }
   };
 
@@ -489,15 +462,14 @@ export default function ResultsPage() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold">Matches & Sources ({matches.length})</h3>
-          {!hasSuggestions && matches.length > 0 && (
-            <button
-              onClick={fetchAllSuggestions}
-              disabled={fetchingSuggestions}
-              className="btn-primary text-sm"
-            >
-              {fetchingSuggestions ? 'Generating...' : 'Generate All Suggestions'}
-            </button>
-          )}
+           {!hasSuggestions && matches.length > 0 && (
+             <button
+               onClick={fetchAllSuggestions}
+               className="btn-primary text-sm"
+             >
+               Generate All Suggestions
+             </button>
+           )}
         </div>
 
         {matches.length === 0 ? (
