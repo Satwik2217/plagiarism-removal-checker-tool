@@ -100,28 +100,42 @@ export default function HomePage() {
       setProgress({ stage: STAGES[stageIdx].label, progress: STAGES[stageIdx].at });
     }, 2500);
 
-    try {
-      const result = await checkPlagiarism(text, {
-        threshold,
-        checkWeb,
-        ngramSize: 5,
-        citationStyle,
-        file: uploadedFile || undefined,
-        auto: true
-      });
+      try {
+        const result = await checkPlagiarism(text, {
+          threshold,
+          checkWeb,
+          ngramSize: 5,
+          citationStyle,
+          file: uploadedFile || undefined,
+          auto: true
+        });
 
-      if (progressTimer.current) window.clearInterval(progressTimer.current);
-      setProgress({ stage: 'Complete', progress: 100 });
+        if (progressTimer.current) window.clearInterval(progressTimer.current);
+        setProgress({ stage: 'Complete', progress: 100 });
 
-      sessionStorage.setItem('checkResult', JSON.stringify(result));
-      sessionStorage.setItem('checkMeta', JSON.stringify({
-        threshold,
-        checkWeb,
-        citationStyle,
-        filename: uploadedFile?.name || 'untitled.txt'
-      }));
-      navigate('/results');
-    } catch (err: any) {
+        // Store file buffer for modified export
+        let fileBase64: string | undefined;
+        if (uploadedFile) {
+          const reader = new FileReader();
+          fileBase64 = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(uploadedFile);
+          });
+          // Strip the data URL prefix to get just the base64
+          fileBase64 = fileBase64.split(',')[1];
+        }
+
+        sessionStorage.setItem('checkResult', JSON.stringify(result));
+        sessionStorage.setItem('checkMeta', JSON.stringify({
+          threshold,
+          checkWeb,
+          citationStyle,
+          filename: uploadedFile?.name || 'untitled.txt',
+          fileBase64
+        }));
+        navigate('/results');
+      } catch (err: any) {
       if (progressTimer.current) window.clearInterval(progressTimer.current);
       setError(err.message || 'Analysis failed. Please try again.');
       setProgress({ stage: '', progress: 0 });

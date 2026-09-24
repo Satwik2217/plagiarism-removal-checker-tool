@@ -7,6 +7,60 @@ const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = do
 
 const router = Router();
 
+// Modify original DOCX or PDF file with fixes applied
+router.post('/modify', async (req: Request, res: Response) => {
+  try {
+    const { type, content, filename, fixedContent, originalText, matches, originalFileBase64 } = req.body;
+
+    if (!fixedContent && !content) {
+      res.status(400).json({ success: false, error: 'Fixed content is required' });
+      return;
+    }
+
+    const docContent = fixedContent || content;
+    const baseName = (filename || 'document').replace(/\.[^.]+$/, '');
+
+    if (type === 'docx') {
+      const doc = buildDocx(docContent, true, matches || [], originalText);
+      const buffer = await Packer.toBuffer(doc);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${baseName}-fixed.docx"`);
+      res.send(Buffer.from(buffer));
+      return;
+    }
+
+    if (type === 'pdf') {
+      const docDefinition = buildPdf(docContent, true, matches || [], originalText);
+      const fonts = {
+        Roboto: {
+          normal: 'Helvetica',
+          bold: 'Helvetica-Bold',
+          italics: 'Helvetica-Oblique',
+          bolditalics: 'Helvetica-BoldOblique'
+        }
+      };
+      const printer = new (PDFDocument as any)(fonts);
+      const chunks: Buffer[] = [];
+
+      const doc = printer.createPdfKitDocument(docDefinition);
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => {
+        const result = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}-fixed.pdf"`);
+        res.send(result);
+      });
+      doc.end();
+      return;
+    }
+
+    res.status(400).json({ success: false, error: 'Unsupported export type. Use "pdf" or "docx".' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: `Export failed: ${error.message}` });
+  }
+});
+
+// Original export endpoints (unchanged)
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { type, content, filename, includeReport, matches, fixedContent, originalText } = req.body;
@@ -101,7 +155,7 @@ function buildDocx(content: string, includeReport?: boolean, matches?: Match[], 
   if (includeReport && matches) {
     paragraphs.push(new Paragraph({ text: 'Plagiarism Report Summary', heading: HeadingLevel.HEADING_2 }));
     paragraphs.push(new Paragraph({ text: `Total Matches Found: ${matches.length}` }));
-    paragraphs.push(new Paragraph({ text: `Date: ${new Date().toLocaleDateString()}` }));
+    paragraphs.push(new Paragraph({ text: `Date: ${new Date().toLocaleDateString() }` }));
     paragraphs.push(new Paragraph({ text: '' }));
 
     if (matches.length > 0) {
@@ -142,7 +196,7 @@ function buildPdf(content: string, includeReport?: boolean, matches?: Match[], o
   if (includeReport && matches) {
     contentBlocks.push({ text: 'Plagiarism Report Summary', style: 'subheader' });
     contentBlocks.push({ text: `Total Matches: ${matches.length}` });
-    contentBlocks.push({ text: `Date: ${new Date().toLocaleDateString()}` });
+    contentBlocks.push({ text: `Date: ${new Date().toLocaleDateString() }` });
     contentBlocks.push({ text: '' });
 
     if (matches.length > 0) {
