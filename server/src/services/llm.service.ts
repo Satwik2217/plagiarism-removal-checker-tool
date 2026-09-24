@@ -1,22 +1,25 @@
 import OpenAI from 'openai';
 import axios from 'axios';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { FixSuggestionRequest, FixSuggestionResponse, Match } from '../types';
 
 export class LLMService {
-  private provider: 'openai' | 'anthropic' | 'ollama';
+  private provider: 'openai' | 'anthropic' | 'ollama' | 'gemini';
   private model: string;
   private openai?: OpenAI;
   private anthropicKey?: string;
   private ollamaUrl: string;
+  private geminiGenAI?: ReturnType<typeof GoogleGenerativeAI>;
 
   constructor() {
-    this.provider = (process.env.LLM_PROVIDER as any) || 'openai';
+    this.provider = (process.env.LLM_PROVIDER as any) || 'fallback';
     this.model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
     this.ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
 
     console.log('LLM Provider:', this.provider);
     console.log('LLM Model:', this.model);
     console.log('OpenAI key present:', !!process.env.OPENAI_API_KEY);
+    console.log('Gemini key present:', !!process.env.GEMINI_API_KEY);
 
     if (this.provider === 'openai' && process.env.OPENAI_API_KEY) {
       this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000 });
@@ -24,6 +27,10 @@ export class LLMService {
 
     if (this.provider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
       this.anthropicKey = process.env.ANTHROPIC_API_KEY;
+    }
+
+    if (this.provider === 'gemini' && process.env.GEMINI_API_KEY) {
+      this.geminiGenAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     }
   }
 
@@ -166,6 +173,13 @@ Context: ${context || 'Academic writing'}`;
       });
 
       const content = response.data.content?.[0]?.text || '';
+      return this.parseSuggestions(content);
+    }
+
+    if (this.provider === 'gemini' && this.geminiGenAI) {
+      const model = this.geminiGenAI.getGenerativeModel({ model: this.model || 'gemini-1.5-flash' });
+      const response = await model.generateContent(prompt);
+      const content = response.response.text();
       return this.parseSuggestions(content);
     }
 

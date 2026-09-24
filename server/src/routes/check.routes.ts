@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { PlagiarismService } from '../services/plagiarism.service';
-import { LLMService } from '../services/llm.service';
 import { extractTopic, TopicResult } from '../services/topic.service';
 import { gatherSourcesAutomatically, } from '../services/auto-source.service';
 import { queryAll } from '../db/init';
@@ -127,17 +126,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const plagiarismService = new PlagiarismService(ngramSize, threshold);
     const result = await plagiarismService.checkText(text, corpusForCheck, false);
 
-    // ---- Step 4: enrich matches with AI fixes ----
-    const enrichedMatches: Match[] = [];
-    for (const match of result.matches) {
-      try {
-        const enriched = await llmService.suggestFixForMatch(match, text, req.body.citationStyle || 'APA');
-        enrichedMatches.push(enriched);
-      } catch {
-        enrichedMatches.push(match);
-      }
-    }
-
+    // ---- Step 4: return matches without blocking on LLM enrichment ----
+    // Fix suggestions are fetched on-demand via /api/suggest-fix when user clicks "Fix"
     const sourceList = sources.map(s => ({
       name: s.filename,
       origin: s.origin,
@@ -147,13 +137,13 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     res.json({
       success: true,
       similarity: result.similarity,
-      matches: enrichedMatches,
+      matches: result.matches,
       originalText: text,
       topic,
       sourcesChecked: sourceList,
       corpusCount: sources.length,
       checkWeb: enableWeb,
-      message: `Compared against ${sources.length} automatically-gathered source${sources.length !== 1 ? 's' : ''}. ${enrichedMatches.length} match${enrichedMatches.length !== 1 ? 'es' : ''} found.`
+      message: `Compared against ${sources.length} automatically-gathered source${sources.length !== 1 ? 's' : ''}. ${result.matches.length} match${result.matches.length !== 1 ? 'es' : ''} found.`
     });
   } catch (error: any) {
     console.error('Check failed:', error);
