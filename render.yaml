@@ -3,6 +3,7 @@ services:
     name: pcfa-server
     env: node
     plan: starter
+    nodeVersion: 18
     buildCommand: npm run build
     startCommand: npm start
     rootDir: .
@@ -25,10 +26,5 @@ services:
         value: llama2
     healthCheckPath: /api/health
     autoDeploy: true
-    branches:
-      main:
-        envVars:
-          - key: NODE_VERSION
-            value: 18
     regions:
       - us-east-1
