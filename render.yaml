@@ -13,9 +13,9 @@ services:
       - key: CLIENT_URL
         value: https://YOUR-RENDER-URL.onrender.com
       - key: LLM_PROVIDER
-        value: openai
+        value: fallback
       - key: LLM_MODEL
-        value: gpt-3.5-turbo
+        value: gemini-1.5-flash
       - key: GEMINI_API_KEY
         from: secret:gemini_api_key
       - key: OPENAI_API_KEY
