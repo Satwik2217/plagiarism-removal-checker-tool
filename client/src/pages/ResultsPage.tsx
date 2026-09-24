@@ -51,14 +51,20 @@ export default function ResultsPage() {
     const fetchSuggestions = async () => {
       setFetchingSuggestions(true);
       try {
-        const enriched = await checkPlagiarism(originalText, {
-          threshold: meta?.threshold || 15,
-          checkWeb: meta?.checkWeb || false,
-          ngramSize: meta?.ngramSize || 5,
-          citationStyle: meta?.citationStyle || 'APA'
-        });
-        setResult(prev => prev ? { ...prev, matches: enriched.matches } : prev);
-        sessionStorage.setItem('checkResult', JSON.stringify({ ...result, matches: enriched.matches }));
+        const updatedMatches = [...result.matches];
+        for (let i = 0; i < updatedMatches.length; i++) {
+          const match = updatedMatches[i];
+          if (!match.suggestions || match.suggestions.length === 0) {
+            try {
+              const fixResult = await suggestFix(match.text, originalText, meta?.citationStyle || 'APA');
+              updatedMatches[i] = { ...match, suggestions: fixResult.suggestions, citations: fixResult.citations };
+            } catch {
+              // skip if suggestion fails
+            }
+          }
+        }
+        setResult(prev => prev ? { ...prev, matches: updatedMatches } : prev);
+        sessionStorage.setItem('checkResult', JSON.stringify({ ...result, matches: updatedMatches }));
       } catch (err: any) {
         setError(err.message);
       } finally {
