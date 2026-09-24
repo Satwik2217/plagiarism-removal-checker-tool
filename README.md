@@ -5,14 +5,14 @@ A complete web-based tool that checks text for plagiarism against web sources an
 ## Features
 
 - **Text Input & File Upload** — Paste text or drag-and-drop `.txt`, `.doc`, `.docx`, `.pdf` files
-- **Plagiarism Detection** — N-gram matching (n=3/5/7), cosine similarity, string comparison
+- **Plagiarism Detection** — N-gram matching (n=3/5/7), cosine similarity, string comparison, sentence-level fuzzy matching with confidence scoring
 - **Local Corpus** — Upload and manage your own reference papers for offline comparison
-- **Web Search Check** — Opt-in comparison against web sources (DuckDuckGo)
+- **Web Search Check** — Opt-in comparison against web sources (DuckDuckGo) and academic papers (Semantic Scholar)
 - **Results Dashboard** — Overall similarity %, charts, highlighted text, paragraph breakdown
-- **AI Fix Suggestions** — Paraphrased rewrites via OpenAI, Claude, or local Ollama (with rule-based fallback)
+- **AI Fix Suggestions** — Paraphrased rewrites via OpenAI, Gemini, Claude, or local Ollama (with rule-based fallback)
 - **Citation Recommendations** — APA, IEEE, and MLA format suggestions
 - **Interactive Fix Editor** — Side-by-side original vs. fix, click-to-apply, manual editing
-- **Export** — Download fixed document as `.docx` or `.pdf`, plus full plagiarism report
+- **Export** — Download fixed document as `.docx` or `.pdf` (clean document with fixes applied inline, no report summary)
 - **Check History** — Save and review past analyses (local SQLite, opt-in)
 - **Local-first** — All analysis runs on your machine; no data leaves your server
 
@@ -33,7 +33,7 @@ pliagarism-removal-checker-tool/
 ├── server/                 # Express + TypeScript backend
 │   ├── src/
 │   │   ├── controllers/    # Corpus, History, Settings
-│   │   ├── services/       # Plagiarism engine, LLM service
+│   │   ├── services/       # Plagiarism engine, LLM, Semantic Scholar
 │   │   ├── routes/         # API routes
 │   │   ├── middleware/     # Rate limiting
 │   │   ├── db/             # SQLite initialization
@@ -139,7 +139,8 @@ All corpus papers are stored locally in `server/data/plagiarism.db`.
 | GET | `/api/history` | Get check history |
 | POST | `/api/history/save` | Save a check |
 | DELETE | `/api/history/:id` | Delete history item |
-| POST | `/api/export` | Export as PDF/DOCX |
+| POST | `/api/export` | Export as PDF/DOCX (clean document) |
+| POST | `/api/export/modify` | Apply fixes to original file, return modified DOCX/PDF |
 | POST | `/api/export/report` | Generate PDF report |
 | GET | `/api/settings` | Get settings |
 | PUT | `/api/settings` | Update settings |
@@ -154,7 +155,7 @@ All corpus papers are stored locally in `server/data/plagiarism.db`.
 5. Review the **results dashboard**: similarity %, charts, highlighted text
 6. Click **Fix** on any match to see paraphrasing suggestions and citations
 7. **Apply fixes** one by one or edit manually
-8. **Export** the corrected document or generate a full report
+8. **Export** the corrected document (clean DOCX/PDF with fixes applied inline) or generate a full report
 9. **Save to history** for later reference
 
 ## Testing
@@ -178,6 +179,8 @@ Sample test documents are in `test/files/`.
 | LLM suggestions fail | Check API key in `server/.env`, or tool falls back to rule-based |
 | Web check fails | Internet connection required; tool continues with local checks |
 | Port already in use | Change `PORT` in `server/.env` |
+| Low similarity results | Tool searches by topic keywords. Upload reference papers to corpus for better matching |
+| Export has report summary | Fixed: `/api/export/modify` now returns clean document without summary |
 
 ## License
 
@@ -198,12 +201,13 @@ This app is a full-stack monorepo. The Express server serves the React frontend 
    - **Root Directory:** `.`
    - **Instance Type:** Starter (free)
 5. **Add Environment Variables** in the Render dashboard:
-   - `PORT` = `5000`
-   - `CLIENT_URL` = `https://YOUR-RENDER-URL.onrender.com`
-   - `LLM_PROVIDER` = `openai`
-   - `LLM_MODEL` = `gpt-3.5-turbo`
-   - `OPENAI_API_KEY` = *(add your key as a secret)*
-   - `ANTHROPIC_API_KEY` = *(optional, add as secret)*
+    - `PORT` = `5000`
+    - `CLIENT_URL` = `https://YOUR-RENDER-URL.onrender.com`
+    - `LLM_PROVIDER` = `fallback` (default; change to `openai`, `gemini`, `anthropic`, or `ollama` if configured)
+    - `LLM_MODEL` = `gemini-1.5-flash`
+    - `OPENAI_API_KEY` = *(add your key as a secret)*
+    - `ANTHROPIC_API_KEY` = *(optional, add as secret)*
+    - `GEMINI_API_KEY` = *(optional, add as secret)*
 6. **Click Deploy** — Render will build and deploy automatically
 7. **Share the URL** with your friends!
 
