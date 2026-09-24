@@ -23,35 +23,32 @@ interface FetchedSource {
 }
 
 // ---------- arXiv ----------
-async function searchArxiv(query: string, max: number): Promise<Array<{ title: string; pdfUrl: string; id: string }>> {
+async function searchArxiv(query: string, max: number): Promise<Array<{ title: string; pdfUrl: string; id: string; summary: string }>> {
   const url = `http://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=${max}&sortBy=relevance`;
   const { data: xml } = await http.get(url, { responseType: 'text', timeout: 15000 });
   const $ = cheerio.load(xml, { xmlMode: true });
-  const results: Array<{ title: string; pdfUrl: string; id: string }> = [];
+  const results: Array<{ title: string; pdfUrl: string; id: string; summary: string }> = [];
 
   $('entry').each((_, el) => {
     const id = $(el).find('id').text().trim();
     const title = $(el).find('title').text().replace(/\s+/g, ' ').trim();
+    const summary = $(el).find('summary').text().replace(/\s+/g, ' ').trim();
     if (!id || !title) return;
     const pdfUrl = $(el).find('link[title="pdf"]').attr('href') || id.replace('/abs/', '/pdf/');
     results.push({
       id: id.split('/abs/').pop() || id,
       title,
-      pdfUrl: pdfUrl.endsWith('.pdf') ? pdfUrl : `${pdfUrl}.pdf`
+      pdfUrl: pdfUrl.endsWith('.pdf') ? pdfUrl : `${pdfUrl}.pdf`,
+      summary
     });
   });
   return results;
 }
 
-async function fetchArxivPaper(item: { title: string; pdfUrl: string; id: string }): Promise<FetchedSource | null> {
+async function fetchArxivPaper(item: { title: string; pdfUrl: string; id: string; summary: string }): Promise<FetchedSource | null> {
   try {
-    const res = await http.get(item.pdfUrl, {
-      responseType: 'arraybuffer',
-      timeout: 25000,
-      maxContentLength: 15 * 1024 * 1024
-    });
-    const buffer = Buffer.from(res.data);
-    const content = await PDFParseUtil.parse(buffer);
+    // Use the abstract from the arXiv API instead of downloading the full PDF (much faster)
+    const content = item.summary || item.title;
     if (!content || content.trim().length < 200) return null;
     return {
       id: uuidv4(),

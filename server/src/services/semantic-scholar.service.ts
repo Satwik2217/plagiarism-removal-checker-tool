@@ -54,27 +54,9 @@ async function searchSemanticScholar(query: string, limit: number = 5): Promise<
 
 async function fetchSemanticPaper(paper: SemanticPaper): Promise<FetchedSource | null> {
   try {
-    if (!paper.abstract && !paper.pdfUrl) return null;
+    if (!paper.abstract) return null;
 
-    let content = paper.abstract || '';
-
-    if (paper.pdfUrl) {
-      try {
-        const res = await http.get(paper.pdfUrl, {
-          responseType: 'arraybuffer',
-          timeout: 20000,
-          maxContentLength: 15 * 1024 * 1024
-        });
-        const buffer = Buffer.from(res.data);
-        const parsed = await PDFParseUtil.parse(buffer);
-        if (parsed && parsed.trim().length > 200) {
-          content = parsed;
-        }
-      } catch {
-        // PDF fetch failed, use abstract only
-      }
-    }
-
+    const content = paper.abstract;
     if (content.trim().length < 100) return null;
 
     const authorsStr = paper.authors?.slice(0, 3).join(', ') || '';
