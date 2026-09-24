@@ -188,42 +188,6 @@ export async function updateSettings(settings: Partial<Settings>): Promise<{ suc
   return response.data;
 }
 
-export async function exportDocument(
-  type: 'pdf' | 'docx',
-  content: string,
-  filename?: string,
-  includeReport?: boolean,
-  matches?: Match[],
-  fixedContent?: string,
-  originalText?: string
-): Promise<Blob> {
-  const response = await api.post('/export', {
-    type,
-    content,
-    filename,
-    includeReport,
-    matches,
-    fixedContent,
-    originalText
-  }, { responseType: 'blob' });
-  return response.data;
-}
-
-export async function exportDocumentModify(
-  type: 'pdf' | 'docx',
-  filename: string,
-  fixedContent: string,
-  matches: Match[]
-): Promise<Blob> {
-  const response = await api.post('/export/modify', {
-    type,
-    filename,
-    fixedContent,
-    matches
-  }, { responseType: 'blob' });
-  return response.data;
-}
-
 export async function exportReport(
   filename: string,
   similarity: number,

@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, FileText, CheckCircle, AlertCircle, BookOpen, Copy } from 'lucide-react';
+import { ArrowLeft, CheckCircle, AlertCircle, BookOpen, Copy, Edit3 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { CheckResult, Match, AppliedFix, CitationStyle, ExportType } from '../types';
-import { buildHighlightedText, applyFixesToText, getRiskColor, getRiskBadge, getRiskLabel, getRiskBg, downloadBlob, generateFallbackFix } from '../utils/helpers';
-import { exportDocumentModify, exportReport, saveCheck, checkPlagiarism } from '../utils/api';
+import { CheckResult, Match, AppliedFix, CitationStyle } from '../types';
+import { buildHighlightedText, applyFixesToText, getRiskColor, getRiskBadge, getRiskLabel, getRiskBg, generateFallbackFix } from '../utils/helpers';
+import { saveCheck, checkPlagiarism } from '../utils/api';
 import FixEditor from '../components/FixEditor';
 
 export default function ResultsPage() {
@@ -16,7 +16,6 @@ export default function ResultsPage() {
   const [meta, setMeta] = useState<any>(null);
   const [appliedFixes, setAppliedFixes] = useState<AppliedFix[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showHighlights, setShowHighlights] = useState(true);
   const [error, setError] = useState('');
@@ -73,10 +72,6 @@ export default function ResultsPage() {
     if (!originalText || !showHighlights) return [{ text: originalText }];
     return buildHighlightedText(originalText, matches, appliedFixes);
   }, [originalText, matches, appliedFixes, showHighlights]);
-
-  const fixedText = useMemo(() => {
-    return applyFixesToText(originalText, appliedFixes);
-  }, [originalText, appliedFixes]);
 
   const paragraphBreakdown = useMemo(() => {
     if (!originalText) return [];
@@ -179,45 +174,6 @@ export default function ResultsPage() {
     }
   };
 
-  const handleExport = async (type: ExportType) => {
-    setExporting(true);
-    setError('');
-    try {
-      const meta = JSON.parse(sessionStorage.getItem('checkMeta') || '{}');
-      const blob = await exportDocumentModify(
-        type,
-        meta?.filename || 'document',
-        fixedText,
-        matches
-      );
-      downloadBlob(blob, `${(meta?.filename || 'document').replace(/\.[^.]+$/, '')}.${type}`);
-    } catch (err: any) {
-      setError(`Export failed: ${err.message}`);
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportReport = async () => {
-    setExporting(true);
-    setError('');
-    try {
-      const blob = await exportReport(
-        meta?.filename || 'document',
-        similarity,
-        matches,
-        originalText,
-        fixedText,
-        appliedFixes.length
-      );
-      downloadBlob(blob, `${(meta?.filename || 'document').replace(/\.[^.]+$/, '')}-report.pdf`);
-    } catch (err: any) {
-      setError(`Report export failed: ${err.message}`);
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -250,15 +206,6 @@ export default function ResultsPage() {
         <div className="flex items-center gap-2">
           <button onClick={handleSave} disabled={saving} className="btn-secondary text-sm">
             {saving ? 'Saving...' : 'Save to History'}
-          </button>
-          <button onClick={() => handleExport('docx')} disabled={exporting} className="btn-secondary text-sm">
-            <Download className="w-4 h-4 inline mr-1" /> DOCX
-          </button>
-          <button onClick={() => handleExport('pdf')} disabled={exporting} className="btn-secondary text-sm">
-            <Download className="w-4 h-4 inline mr-1" /> PDF
-          </button>
-          <button onClick={handleExportReport} disabled={exporting} className="btn-primary text-sm">
-            <FileText className="w-4 h-4 inline mr-1" /> Report
           </button>
         </div>
       </div>
@@ -420,19 +367,28 @@ export default function ResultsPage() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              Fixed Document ({appliedFixes.length} changes)
+              <Edit3 className="w-5 h-5 text-blue-600" />
+              Changes to Make ({appliedFixes.length} changes)
             </h3>
-            <button
-              onClick={() => navigator.clipboard.writeText(fixedText)}
-              className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
-            >
-              <Copy className="w-4 h-4" /> Copy
-            </button>
           </div>
-          <div className="max-h-96 overflow-y-auto scrollbar-thin p-4 bg-green-50 rounded-lg text-sm leading-relaxed whitespace-pre-wrap">
-            {fixedText || originalText}
-          </div>
+          {appliedFixes.length === 0 ? (
+            <p className="text-sm text-gray-500">No changes detected. The document appears to be original.</p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-thin">
+              {appliedFixes.map((fix, idx) => (
+                <div key={fix.matchId} className="border border-blue-200 rounded-lg p-3 bg-blue-50">
+                  <p className="text-xs font-medium text-blue-700 mb-2">Change #{idx + 1}</p>
+                  <div className="text-sm text-gray-700 bg-white rounded p-2 mb-2 border">
+                    <span className="line-through text-red-500">{fix.originalText.substring(0, 150)}{fix.originalText.length > 150 ? '...' : ''}</span>
+                  </div>
+                  <div className="text-sm text-gray-700 bg-white rounded p-2 border border-green-300">
+                    <span className="text-green-700 font-medium">→ Fixed:</span>{' '}
+                    {fix.fixedText.substring(0, 150)}{fix.fixedText.length > 150 ? '...' : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
