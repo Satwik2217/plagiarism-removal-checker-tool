@@ -7,8 +7,8 @@ const router = Router();
 // Generate plagiarism report as PDF
 router.post('/report', async (req: Request, res: Response) => {
   try {
-    const { filename, similarity, matches, originalText, fixedContent, changesApplied } = req.body;
-    const docDefinition = buildReportPdf(filename, similarity, matches, originalText, fixedContent, changesApplied);
+    const { filename, similarity, matches, originalText, changesApplied } = req.body;
+    const docDefinition = buildReportPdf(filename, similarity, matches, originalText, changesApplied);
     const fonts = {
       Roboto: {
         normal: 'Helvetica',
@@ -39,7 +39,6 @@ function buildReportPdf(
   similarity: number,
   matches: Match[],
   originalText: string,
-  fixedContent: string,
   changesApplied: number
 ): any {
   const contentBlocks: any[] = [];
@@ -96,15 +95,6 @@ function buildReportPdf(
   contentBlocks.push({ text: '' });
   contentBlocks.push({ text: 'Methodology', style: 'subheader' });
   contentBlocks.push({ text: 'This analysis used n-gram matching (n=5), cosine similarity, and string comparison against the local corpus and web sources (if enabled).' });
-
-  if (fixedContent && changesApplied > 0) {
-    contentBlocks.push({ text: '' });
-    contentBlocks.push({ text: 'Corrected Document', style: 'subheader' });
-    contentBlocks.push({ text: '' });
-    fixedContent.split('\n').forEach(line => {
-      if (line.trim()) contentBlocks.push({ text: line, margin: [0, 0, 0, 6] });
-    });
-  }
 
   return {
     content: contentBlocks,

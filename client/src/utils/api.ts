@@ -193,7 +193,6 @@ export async function exportReport(
   similarity: number,
   matches: Match[],
   originalText: string,
-  fixedContent: string,
   changesApplied: number
 ): Promise<Blob> {
   const response = await api.post('/export/report', {
@@ -201,7 +200,6 @@ export async function exportReport(
     similarity,
     matches,
     originalText,
-    fixedContent,
     changesApplied
   }, { responseType: 'blob' });
   return response.data;
