@@ -1,6 +1,6 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 
 const DATA_DIR = join(process.cwd(), 'data');
 const DB_PATH = join(DATA_DIR, 'plagiarism.db');
@@ -13,7 +13,7 @@ export async function initializeDatabase(customPath?: string): Promise<SqlJsData
 
   if (customPath) dbPath = customPath;
 
-  const dir = dbPath.substring(0, dbPath.lastIndexOf('\\'));
+  const dir = dirname(dbPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
