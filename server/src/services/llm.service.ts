@@ -14,8 +14,12 @@ export class LLMService {
     this.model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
     this.ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
 
+    console.log('LLM Provider:', this.provider);
+    console.log('LLM Model:', this.model);
+    console.log('OpenAI key present:', !!process.env.OPENAI_API_KEY);
+
     if (this.provider === 'openai' && process.env.OPENAI_API_KEY) {
-      this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000 });
     }
 
     if (this.provider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
