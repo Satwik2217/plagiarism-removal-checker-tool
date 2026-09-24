@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { CheckResult, Match, AppliedFix, CitationStyle, ExportType } from '../types';
 import { buildHighlightedText, applyFixesToText, getRiskColor, getRiskBadge, getRiskLabel, getRiskBg, downloadBlob } from '../utils/helpers';
-import { exportDocument, exportDocumentModify, exportReport, saveCheck, suggestFix, checkPlagiarism } from '../utils/api';
+import { exportDocumentModify, exportReport, saveCheck, suggestFix, checkPlagiarism } from '../utils/api';
 import FixEditor from '../components/FixEditor';
 
 export default function ResultsPage() {
@@ -180,17 +180,13 @@ export default function ResultsPage() {
     setError('');
     try {
       const meta = JSON.parse(sessionStorage.getItem('checkMeta') || '{}');
-      const fileBase64 = meta?.fileBase64;
       const blob = await exportDocumentModify(
         type,
-        originalText,
         meta?.filename || 'document',
         fixedText,
-        originalText,
-        matches,
-        fileBase64
+        matches
       );
-      downloadBlob(blob, `${(meta?.filename || 'document').replace(/\.[^.]+$/, '')}-fixed.${type}`);
+      downloadBlob(blob, `${(meta?.filename || 'document').replace(/\.[^.]+$/, '')}.${type}`);
     } catch (err: any) {
       setError(`Export failed: ${err.message}`);
     } finally {

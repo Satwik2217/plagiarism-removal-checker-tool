@@ -7,30 +7,29 @@ const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = do
 
 const router = Router();
 
-// Modify original DOCX or PDF file with fixes applied
+// Modify original DOCX or PDF file with fixes applied inline — no report summary
 router.post('/modify', async (req: Request, res: Response) => {
   try {
-    const { type, content, filename, fixedContent, originalText, matches, originalFileBase64 } = req.body;
+    const { type, filename, fixedContent, matches } = req.body;
 
-    if (!fixedContent && !content) {
+    if (!fixedContent) {
       res.status(400).json({ success: false, error: 'Fixed content is required' });
       return;
     }
 
-    const docContent = fixedContent || content;
     const baseName = (filename || 'document').replace(/\.[^.]+$/, '');
 
     if (type === 'docx') {
-      const doc = buildDocx(docContent, true, matches || [], originalText);
+      const doc = buildDocxClean(fixedContent);
       const buffer = await Packer.toBuffer(doc);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${baseName}-fixed.docx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.docx"`);
       res.send(Buffer.from(buffer));
       return;
     }
 
     if (type === 'pdf') {
-      const docDefinition = buildPdf(docContent, true, matches || [], originalText);
+      const docDefinition = buildPdfClean(fixedContent);
       const fonts = {
         Roboto: {
           normal: 'Helvetica',
@@ -47,7 +46,7 @@ router.post('/modify', async (req: Request, res: Response) => {
       doc.on('end', () => {
         const result = Buffer.concat(chunks);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${baseName}-fixed.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}.pdf"`);
         res.send(result);
       });
       doc.end();
@@ -59,6 +58,35 @@ router.post('/modify', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: `Export failed: ${error.message}` });
   }
 });
+
+function buildDocxClean(content: string): any {
+  const paragraphs: any[] = [];
+  content.split('\n').forEach(line => {
+    if (line.trim().length > 0) {
+      paragraphs.push(new Paragraph({ text: line, spacing: { after: 120 } }));
+    } else {
+      paragraphs.push(new Paragraph({ text: '' }));
+    }
+  });
+  return new Document({ sections: [{ children: paragraphs }] });
+}
+
+function buildPdfClean(content: string): any {
+  const contentBlocks: any[] = [];
+  content.split('\n').forEach(line => {
+    if (line.trim().length > 0) {
+      contentBlocks.push({ text: line, margin: [0, 0, 0, 8] });
+    }
+  });
+  return {
+    content: contentBlocks,
+    styles: {
+      header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
+      subheader: { fontSize: 14, bold: true, margin: [0, 10, 0, 5] }
+    },
+    defaultStyle: { fontSize: 11 }
+  };
+}
 
 // Original export endpoints (unchanged)
 router.post('/', async (req: Request, res: Response) => {
@@ -74,16 +102,21 @@ router.post('/', async (req: Request, res: Response) => {
     const baseName = (filename || 'document').replace(/\.[^.]+$/, '');
 
     if (type === 'docx') {
-      const doc = buildDocx(docContent, includeReport, matches, originalText);
+      const doc = includeReport ? buildDocx(docContent, matches, originalText) : buildDocxClean(docContent);
       const buffer = await Packer.toBuffer(doc);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${baseName}-fixed.docx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.docx"`);
       res.send(Buffer.from(buffer));
       return;
     }
 
     if (type === 'pdf') {
-      const docDefinition = buildPdf(docContent, includeReport, matches, originalText);
+      let docDefinition;
+      if (includeReport) {
+        docDefinition = buildPdf(docContent, matches, originalText);
+      } else {
+        docDefinition = buildPdfClean(docContent);
+      }
       const fonts = {
         Roboto: {
           normal: 'Helvetica',
@@ -100,7 +133,7 @@ router.post('/', async (req: Request, res: Response) => {
       doc.on('end', () => {
         const result = Buffer.concat(chunks);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${baseName}-fixed.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}.pdf"`);
         res.send(result);
       });
       doc.end();
@@ -142,7 +175,7 @@ router.post('/report', async (req: Request, res: Response) => {
   }
 });
 
-function buildDocx(content: string, includeReport?: boolean, matches?: Match[], originalText?: string): any {
+function buildDocx(content: string, matches?: Match[], originalText?: string): any {
   const paragraphs: any[] = [];
 
   paragraphs.push(new Paragraph({
@@ -152,25 +185,23 @@ function buildDocx(content: string, includeReport?: boolean, matches?: Match[], 
   }));
   paragraphs.push(new Paragraph({ text: '' }));
 
-  if (includeReport && matches) {
+  if (matches && matches.length > 0) {
     paragraphs.push(new Paragraph({ text: 'Plagiarism Report Summary', heading: HeadingLevel.HEADING_2 }));
     paragraphs.push(new Paragraph({ text: `Total Matches Found: ${matches.length}` }));
     paragraphs.push(new Paragraph({ text: `Date: ${new Date().toLocaleDateString() }` }));
     paragraphs.push(new Paragraph({ text: '' }));
 
-    if (matches.length > 0) {
-      paragraphs.push(new Paragraph({ text: 'Flagged Matches:', heading: HeadingLevel.HEADING_3 }));
-      matches.forEach((match, idx) => {
-        paragraphs.push(new Paragraph({
-          children: [
-            new TextRun({ text: `${idx + 1}. `, bold: true }),
-            new TextRun({ text: `"${match.text.substring(0, 100)}${match.text.length > 100 ? '...' : ''}"` }),
-            new TextRun({ text: ` — Source: ${match.source}, Confidence: ${match.confidence}%`, italics: true })
-          ]
-        }));
-      });
-      paragraphs.push(new Paragraph({ text: '' }));
-    }
+    paragraphs.push(new Paragraph({ text: 'Flagged Matches:', heading: HeadingLevel.HEADING_3 }));
+    matches.forEach((match, idx) => {
+      paragraphs.push(new Paragraph({
+        children: [
+          new TextRun({ text: `${idx + 1}. `, bold: true }),
+          new TextRun({ text: `"${match.text.substring(0, 100)}${match.text.length > 100 ? '...' : ''}"` }),
+          new TextRun({ text: ` — Source: ${match.source}, Confidence: ${match.confidence}%`, italics: true })
+        ]
+      }));
+    });
+    paragraphs.push(new Paragraph({ text: '' }));
 
     paragraphs.push(new Paragraph({ text: 'Corrected Content:', heading: HeadingLevel.HEADING_2 }));
     paragraphs.push(new Paragraph({ text: '' }));
@@ -187,32 +218,30 @@ function buildDocx(content: string, includeReport?: boolean, matches?: Match[], 
   return new Document({ sections: [{ children: paragraphs }] });
 }
 
-function buildPdf(content: string, includeReport?: boolean, matches?: Match[], originalText?: string): any {
+function buildPdf(content: string, matches?: Match[], originalText?: string): any {
   const contentBlocks: any[] = [];
 
   contentBlocks.push({ text: 'Plagiarism Checker & Fix Assistant', style: 'header', alignment: 'center' });
   contentBlocks.push({ text: '' });
 
-  if (includeReport && matches) {
+  if (matches && matches.length > 0) {
     contentBlocks.push({ text: 'Plagiarism Report Summary', style: 'subheader' });
     contentBlocks.push({ text: `Total Matches: ${matches.length}` });
     contentBlocks.push({ text: `Date: ${new Date().toLocaleDateString() }` });
     contentBlocks.push({ text: '' });
 
-    if (matches.length > 0) {
-      contentBlocks.push({ text: 'Flagged Matches:', style: 'subheader' });
-      matches.forEach((match, idx) => {
-        contentBlocks.push({
-          text: [
-            { text: `${idx + 1}. `, bold: true },
-            { text: `"${match.text.substring(0, 100)}${match.text.length > 100 ? '...' : ''}"` },
-            { text: ` — ${match.source} (${match.confidence}%)`, italics: true, fontSize: 9 }
-          ],
-          margin: [0, 0, 0, 5]
-        });
+    contentBlocks.push({ text: 'Flagged Matches:', style: 'subheader' });
+    matches.forEach((match, idx) => {
+      contentBlocks.push({
+        text: [
+          { text: `${idx + 1}. `, bold: true },
+          { text: `"${match.text.substring(0, 100)}${match.text.length > 100 ? '...' : ''}"` },
+          { text: ` — ${match.source} (${match.confidence}%)`, italics: true, fontSize: 9 }
+        ],
+        margin: [0, 0, 0, 5]
       });
-      contentBlocks.push({ text: '' });
-    }
+    });
+    contentBlocks.push({ text: '' });
 
     contentBlocks.push({ text: 'Corrected Content:', style: 'subheader' });
     contentBlocks.push({ text: '' });

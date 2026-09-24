@@ -211,21 +211,15 @@ export async function exportDocument(
 
 export async function exportDocumentModify(
   type: 'pdf' | 'docx',
-  content: string,
   filename: string,
   fixedContent: string,
-  originalText: string,
-  matches: Match[],
-  originalFileBase64?: string
+  matches: Match[]
 ): Promise<Blob> {
   const response = await api.post('/export/modify', {
     type,
-    content,
     filename,
     fixedContent,
-    originalText,
-    matches,
-    originalFileBase64
+    matches
   }, { responseType: 'blob' });
   return response.data;
 }

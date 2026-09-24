@@ -25,5 +25,9 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "pdf-lib": "^1.17.1"
   }
 }
