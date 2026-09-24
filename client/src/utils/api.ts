@@ -3,7 +3,7 @@ import { Match, CheckResult, HistoryItem, CorpusPaper, Settings, FixSuggestion, 
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 120000
+  timeout: 300000
 });
 
 api.interceptors.response.use(
@@ -48,10 +48,10 @@ export async function checkPlagiarism(
     onProgress({ stage: checkWeb ? 'Checking web sources...' : 'Analyzing against corpus...', progress: 30 });
   }
 
-  const response = await api.post('/check-plagiarism', formData, {
+const response = await api.post('/check-plagiarism', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 180000
-  });
+    timeout: 300000
+});
 
   if (onProgress) {
     onProgress({ stage: 'Generating fix suggestions...', progress: 80 });
