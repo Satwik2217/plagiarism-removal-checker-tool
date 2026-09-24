@@ -1,0 +1,9 @@
+Machine learning is a subset of artificial intelligence that focuses on building systems that learn from data. These systems improve their performance over time without being explicitly programmed. Machine learning algorithms build mathematical models based on sample data, known as training data, in order to make predictions or decisions without being explicitly programmed to do so.
+
+Deep learning is a specialized subset of machine learning that uses artificial neural networks with multiple layers. Deep learning models can learn complex patterns in large amounts of data. Applications of deep learning include image recognition, natural language processing, speech recognition, and autonomous vehicles.
+
+Natural language processing (NLP) is a subfield of linguistics, computer science, and artificial intelligence concerned with the interactions between computers and human language. The goal is to enable computers to understand, interpret, and generate human language in a valuable way. NLP combines computational linguistics with statistical, machine learning, and deep learning models.
+
+Recurrent neural networks (RNNs) are a class of artificial neural networks where connections between nodes form a directed graph along a temporal sequence. This allows RNNs to exhibit temporal dynamic behavior. RNNs can use their internal state to process variable length sequences of inputs.
+
+Convolutional neural networks (CNNs) are a class of deep neural networks most commonly applied to analyzing visual imagery. CNNs use a variation of multilayer perceptrons designed to require minimal preprocessing. They are also known as shift invariant or space invariant artificial neural networks.
