@@ -1,10 +1,12 @@
-// Automatic source gathering: arXiv (academic) + web pages — no manual corpus needed.
+// Automatic source gathering: arXiv (academic) + Semantic Scholar + web pages — no manual corpus needed.
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { v4 as uuidv4 } from 'uuid';
 import { CorpusPaper, Match } from '../types';
 import { PDFParseUtil } from '../utils/pdf-parser';
 import { TopicResult, buildSearchQuery } from './topic.service';
+import { searchWebAll, fetchWikipediaArticle, WebResult } from './web-search.service';
+import { searchSemanticScholarAll } from './semantic-scholar.service';
 
 const http = axios.create({
   timeout: 20000,
@@ -16,7 +18,7 @@ interface FetchedSource {
   id: string;
   filename: string;
   content: string;
-  origin: 'arxiv' | 'web' | 'local';
+  origin: 'arxiv' | 'web' | 'local' | 'semantic-scholar';
   url?: string;
 }
 
@@ -64,10 +66,7 @@ async function fetchArxivPaper(item: { title: string; pdfUrl: string; id: string
 }
 
 // ---------- Web (Wikipedia + OpenAlex via web-search.service) ----------
-import { searchWebAll, fetchWikipediaArticle, WebResult } from './web-search.service';
-
 async function fetchWebResult(result: WebResult): Promise<FetchedSource | null> {
-  // Wikipedia: use the API for clean full text (no HTML scraping)
   if (result.url.includes('wikipedia.org/wiki/')) {
     const article = await fetchWikipediaArticle(result.url);
     if (article && article.text.trim().length >= 300) {
@@ -156,7 +155,24 @@ export async function gatherSourcesAutomatically(
     log(`arXiv search failed (${err.message}) — continuing...`);
   }
 
-  // 3. Web search — Wikipedia + OpenAlex (free, keyless APIs) for related content
+  // 3. Semantic Scholar search (always — free, covers IEEE/ACM/Springer)
+  try {
+    log('Searching Semantic Scholar for related papers...');
+    const queries = [
+      topic.title,
+      ...topic.keywords.slice(0, 3),
+      ...topic.keySentences.map(s => s.substring(0, 80))
+    ].filter(Boolean);
+    const semanticSources = await searchSemanticScholarAll(queries, 5);
+    for (const source of semanticSources) {
+      sources.push(source);
+    }
+    log(`Found ${semanticSources.length} Semantic Scholar papers`);
+  } catch (err: any) {
+    log(`Semantic Scholar search failed (${err.message}) — continuing...`);
+  }
+
+  // 4. Web search — Wikipedia + OpenAlex (free, keyless APIs) for related content
   if (opts.enableWeb && (topic.keySentences.length > 0 || topic.keywords.length > 0)) {
     try {
       log('Searching Wikipedia + OpenAlex for related sources...');
