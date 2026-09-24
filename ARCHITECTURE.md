@@ -26,19 +26,20 @@
 
 ## 1. Overview
 
-PCFA is a full-stack web application that detects plagiarism in text documents and provides AI-powered fix suggestions. It supports multiple file formats (TXT, DOCX, PDF), compares against a local corpus and web sources, and offers paraphrasing suggestions via LLMs or a rule-based fallback.
+PCFA is a full-stack web application that detects plagiarism in text documents and provides AI-powered fix suggestions. It supports multiple file formats (TXT, DOCX, PDF), compares against a local corpus and multiple web sources (arXiv, Semantic Scholar, Wikipedia, OpenAlex), and offers paraphrasing suggestions via LLMs or a rule-based fallback.
 
 **Core Capabilities:**
 - Text input and file upload (TXT, DOCX, PDF)
-- Plagiarism detection using N-gram matching, cosine similarity, and string comparison
+- Plagiarism detection using N-gram matching, cosine similarity, string comparison, and sentence-level fuzzy matching
 - Local corpus management (upload, toggle, delete papers)
-- Web source checking (DuckDuckGo, arXiv)
+- Multi-source web checking (arXiv, Semantic Scholar, Wikipedia, OpenAlex)
 - AI-powered fix suggestions (OpenAI, Gemini, Anthropic, Ollama, or rule-based fallback)
 - Citation recommendations (APA, IEEE, MLA)
 - Interactive fix editor with click-to-apply
-- Export to DOCX and PDF
+- Export to DOCX and PDF with original file modification support
 - Check history (local SQLite)
 - Local-first architecture — all data stays on the user's machine
+- Accurate similarity metrics with per-match confidence scoring and text normalization
 
 ---
 
@@ -77,6 +78,7 @@ PCFA is a full-stack web application that detects plagiarism in text documents a
 | **dotenv** | Environment variable management |
 | **uuid** | Unique ID generation |
 | **zod** | Schema validation |
+| **axios** | HTTP client for Semantic Scholar API |
 
 ### Infrastructure
 | Technology | Purpose |
@@ -142,11 +144,12 @@ pliagarism-removal-checker-tool/
 │   │   │   ├── history.controller.ts
 │   │   │   └── settings.controller.ts
 │   │   ├── services/                # Core business logic services
-│   │   │   ├── plagiarism.service.ts # N-gram matching, cosine similarity
+│   │   │   ├── plagiarism.service.ts # N-gram matching, cosine similarity, string comparison
 │   │   │   ├── llm.service.ts       # LLM integration (OpenAI, Gemini, Anthropic, Ollama)
 │   │   │   ├── topic.service.ts     # Topic extraction from text
 │   │   │   ├── web-search.service.ts # DuckDuckGo web search
-│   │   │   ├── auto-source.service.ts # Automatic source gathering
+│   │   │   ├── semantic-scholar.service.ts # Semantic Scholar API integration
+│   │   │   ├── auto-source.service.ts # Automatic source gathering pipeline
 │   │   │   └── pdf-parser.ts        # PDF text extraction utility
 │   │   ├── middleware/              # Express middleware
 │   │   │   └── rate-limit.ts        # Request rate limiting
@@ -213,9 +216,9 @@ pliagarism-removal-checker-tool/
 │                         │                                  │
 │  ┌──────────────────────▼───────────────────────────────┐  │
 │  │              Services Layer                            │  │
-│  │  • PlagiarismService (N-gram, cosine, string match)   │  │
+│  │  • PlagiarismService (N-gram, cosine, string match, fuzzy matching)   │  │
 │  │  • LLMService (OpenAI, Gemini, Anthropic, Ollama)     │  │
-│  │  • TopicService • WebSearchService • AutoSourceService │  │
+│  │  • TopicService • WebSearchService • SemanticScholarService • AutoSourceService │  │
 │  └──────────────────────┬───────────────────────────────┘  │
 │                         │                                  │
 │  ┌──────────────────────▼───────────────────────────────┐  │
@@ -265,7 +268,18 @@ The server entry point initializes the Express application:
 - **N-gram Matching:** Splits text into n-grams (configurable n=3/5/7) and compares against corpus
 - **Cosine Similarity:** Vector-based similarity calculation between text and corpus papers
 - **String Comparison:** Uses `string-similarity` library for direct string matching
+- **Sentence-level Fuzzy Matching:** Compares individual sentences using normalized text and cosine similarity
+- **Confidence Scoring:** Each match receives a confidence score calculated as `stringSim * 0.4 + cosine * 0.4 + length * 0.2`
+- **Text Normalization:** `normalizeText()` strips extra whitespace, lowercases, and removes punctuation for accurate comparison
+- **Match Remapping:** `remapToOriginal()` maps normalized match positions back to original text coordinates
 - **Threshold-based filtering:** Only reports matches above the configured threshold (default: 15%)
+- **Web Source Checking:** `checkWebSources()` queries Semantic Scholar API for related academic papers
+
+#### SemanticScholarService (`server/src/services/semantic-scholar.service.ts`)
+- **Semantic Scholar API Integration:** Free API (no key required) covering IEEE, ACM, Springer, and other academic publishers
+- **Paper Search:** Searches by title/abstract keywords to find related academic papers
+- **Citation Data:** Retrieves citation counts and influential paper rankings
+- **Used by:** AutoSourceService and checkWebSources() for academic source discovery
 
 #### LLMService (`server/src/services/llm.service.ts`)
 - **Provider Detection:** Reads `LLM_PROVIDER` env var (`openai`, `gemini`, `anthropic`, `ollama`, or `fallback`)
@@ -283,11 +297,13 @@ The server entry point initializes the Express application:
 #### WebSearchService (`server/src/services/web-search.service.ts`)
 - Searches DuckDuckGo for related content
 - Returns web sources for plagiarism comparison
+- Optional: gated by `enableWeb` toggle
 
 #### AutoSourceService (`server/src/services/auto-source.service.ts`)
 - Orchestrates automatic source gathering
-- Combines local corpus, web search, and arXiv results
+- Pipeline: Local Corpus → arXiv → Semantic Scholar → Wikipedia/OpenAlex (optional, gated by `enableWeb` toggle)
 - Configurable number of arXiv results (default: 5)
+- Uses Semantic Scholar API for academic paper discovery
 
 ### 5.3 Middleware
 
@@ -332,7 +348,7 @@ The client is a **React + TypeScript** single-page application built with **Vite
 | Page | Function |
 |------|----------|
 | **HomePage** | Text input area, file upload (drag-and-drop), configuration options (threshold, n-gram size, citation style, web search toggle) |
-| **ResultsPage** | Similarity percentage, charts (Recharts), highlighted text, paragraph breakdown, fix suggestions, export options |
+| **ResultsPage** | Similarity percentage, charts (Recharts), highlighted text, paragraph breakdown, fix suggestions, export options, modify and download original file |
 | **CorpusPage** | Upload/manage reference papers, toggle papers on/off, delete papers |
 | **HistoryPage** | View past plagiarism checks, save/delete history items |
 | **SettingsPage** | Configure LLM provider, model, API keys, and app preferences |
@@ -341,7 +357,7 @@ The client is a **React + TypeScript** single-page application built with **Vite
 - **Axios instance** with `baseURL: '/api'` and 120s timeout
 - All API calls use `/api` prefix (proxied to Express server in dev)
 - Interceptors handle error responses globally
-- Functions: `checkPlagiarism()`, `suggestFix()`, `getCorpus()`, `uploadCorpusFile()`, `getHistory()`, `exportDocument()`, etc.
+- Functions: `checkPlagiarism()`, `suggestFix()`, `getCorpus()`, `uploadCorpusFile()`, `getHistory()`, `exportDocument()`, `exportModifiedDocument()`, etc.
 
 #### Key Components
 | Component | Purpose |
@@ -438,6 +454,7 @@ The database uses **sql.js** (SQLite via WebAssembly) with three tables:
 |--------|----------|-------------|
 | POST | `/api/export` | Export document as DOCX or PDF |
 | POST | `/api/export/report` | Generate full plagiarism report as PDF |
+| POST | `/api/export/modify` | Apply plagiarism fixes to original file and return modified file in same format (docx→docx, pdf→pdf) |
 
 ### Settings
 | Method | Endpoint | Description |
@@ -522,6 +539,8 @@ services:
         value: fallback
       - key: LLM_MODEL
         value: gemini-1.5-flash
+      - key: GEMINI_API_KEY
+        value: your-gemini-api-key
     healthCheckPath: /api/health
     autoDeploy: true
     regions:
@@ -631,6 +650,21 @@ OLLAMA_MODEL=llama2
 - **Implementation:** `pdf-parse`, `mammoth`, `docx` libraries for text extraction
 - **Limitations:** Large PDFs (>10MB) are rejected by multer
 
+### 12.8 Accuracy Improvements
+- **Why:** Initial similarity detection had false positives and low accuracy due to unnormalized text comparison.
+- **Implementation:** `normalizeText()` standardizes text before comparison. Confidence scoring uses weighted combination of string similarity (40%), cosine similarity (40%), and length factor (20%). Match positions are remapped from normalized text back to original coordinates.
+- **Benefit:** More accurate plagiarism detection with per-match confidence scores
+
+### 12.9 Semantic Scholar Integration
+- **Why:** DuckDuckGo web search returns low-quality or irrelevant results for academic plagiarism detection.
+- **Implementation:** Semantic Scholar API provides free, high-quality academic paper search covering IEEE, ACM, Springer, and other publishers. No API key required.
+- **Benefit:** Better source discovery for academic papers without requiring API keys
+
+### 12.10 File Modification & Download
+- **Why:** Users need to download the original document with plagiarism fixes already applied, in the same format they uploaded.
+- **Implementation:** `/api/export/modify` endpoint accepts the original file and applied fixes, then uses `pdf-lib` or `docx` library to produce a modified file in the same format.
+- **Benefit:** Seamless workflow from detection to remediation without format conversion
+
 ---
 
 ## Appendix: Testing
@@ -666,6 +700,8 @@ Located in `test/files/`:
 | Port already in use | Change `PORT` in `.env` |
 | File upload fails | Check file format (.txt/.doc/.docx/.pdf) and size (<10MB) |
 | "Text too short" error | Enter at least 100 characters |
+| Low similarity results | Tool searches by topic keywords, not exact text. Upload reference papers to corpus for better matching |
+| Slow analysis | Sequential PDF downloads/parses with individual timeouts. Disable web search if not needed |
 
 ---
 
