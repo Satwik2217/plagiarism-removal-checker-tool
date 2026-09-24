@@ -213,13 +213,15 @@ export async function exportDocumentModify(
   type: 'pdf' | 'docx',
   filename: string,
   fixedContent: string,
-  matches: Match[]
+  matches: Match[],
+  originalFileBase64?: string
 ): Promise<Blob> {
   const response = await api.post('/export/modify', {
     type,
     filename,
     fixedContent,
-    matches
+    matches,
+    originalFileBase64
   }, { responseType: 'blob' });
   return response.data;
 }
