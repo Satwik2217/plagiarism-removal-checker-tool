@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as docxLib from 'docx';
-import { PDFDocument, rgb } from 'pdf-lib';
+import PDFDocument from 'pdfmake';
+import pdfParse from 'pdf-parse';
 import { Match } from '../types';
 
 const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = docxLib as any;
@@ -32,13 +33,30 @@ router.post('/modify', async (req: Request, res: Response) => {
     }
 
     if (type === 'pdf') {
-      const pdfDoc = await PDFDocument.load(buffer);
-      const pages = pdfDoc.getPages();
-      await replaceTextInPdf(pdfDoc, pages, fixedContent, matches || []);
-      const resultBuffer = await pdfDoc.save();
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.pdf"`);
-      res.send(Buffer.from(resultBuffer));
+      const pdfData = await pdfParse(buffer);
+      const originalPdfText = pdfData.text;
+      const fixedPdfText = applyFixesToOriginal(originalPdfText, matches || []);
+      const docDefinition = buildPdfClean(fixedPdfText);
+      const fonts = {
+        Roboto: {
+          normal: 'Helvetica',
+          bold: 'Helvetica-Bold',
+          italics: 'Helvetica-Oblique',
+          bolditalics: 'Helvetica-BoldOblique'
+        }
+      };
+      const printer = new (PDFDocument as any)(fonts);
+      const chunks: Buffer[] = [];
+
+      const doc = printer.createPdfKitDocument(docDefinition);
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => {
+        const result = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}.pdf"`);
+        res.send(result);
+      });
+      doc.end();
       return;
     }
 
@@ -47,6 +65,50 @@ router.post('/modify', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: `Export failed: ${error.message}` });
   }
 });
+
+function applyFixesToOriginal(text: string, matches: Match[]): string {
+  const appliedFixes = matches
+    .filter(m => m.suggestions && m.suggestions.length > 0)
+    .map(m => ({
+      originalText: m.text,
+      fixedText: m.suggestions[0]
+    }));
+
+  if (appliedFixes.length === 0) return text;
+
+  const positioned = appliedFixes
+    .map(fix => ({ fix, pos: text.indexOf(fix.originalText) }))
+    .filter(x => x.pos >= 0)
+    .sort((a, b) => b.pos - a.pos);
+
+  const unmatched = appliedFixes.filter(f => text.indexOf(f.originalText) < 0);
+
+  let result = text;
+  for (const { fix, pos } of positioned) {
+    const end = pos + fix.originalText.length;
+    result = result.slice(0, pos) + fix.fixedText + result.slice(end);
+  }
+
+  for (const fix of unmatched) {
+    if (!fix.originalText) continue;
+    const pattern = fix.originalText
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('\\s+');
+    try {
+      const re = new RegExp(pattern);
+      const m = result.match(re);
+      if (m && m.index !== undefined) {
+        result = result.slice(0, m.index) + fix.fixedText + result.slice(m.index + m[0].length);
+      }
+    } catch {
+      // skip unmatchable fix
+    }
+  }
+
+  return result;
+}
 
 function replaceTextInDocx(doc: any, matches: Match[]): void {
   const appliedFixes = matches
@@ -75,47 +137,6 @@ function replaceTextInDocx(doc: any, matches: Match[]): void {
 
   if (doc.body && doc.body.children) {
     traverseChildren(doc.body.children);
-  }
-}
-
-async function replaceTextInPdf(pdfDoc: any, pages: any[], fixedContent: string, matches: Match[]): Promise<void> {
-  const appliedFixes = matches
-    .filter(m => m.suggestions && m.suggestions.length > 0)
-    .map(m => ({
-      originalText: m.text,
-      fixedText: m.suggestions[0]
-    }));
-
-  if (appliedFixes.length === 0) return;
-
-  for (const page of pages) {
-    const height = page.getHeight();
-    const fontSize = 11;
-
-    for (const fix of appliedFixes) {
-      const text = fix.originalText;
-      const fixedText = fix.fixedText;
-      if (!text || text.length === 0) continue;
-
-      const font = await page.getFont();
-      const textWidth = font.widthOfTextAtSize(text, fontSize);
-
-      page.drawRectangle({
-        x: 40,
-        y: height - 80,
-        width: textWidth + 4,
-        height: fontSize + 8,
-        color: rgb(1, 1, 1)
-      });
-
-      page.drawText(fixedText, {
-        x: 42,
-        y: height - 78,
-        size: fontSize,
-        color: rgb(0, 0, 0),
-        font
-      });
-    }
   }
 }
 
